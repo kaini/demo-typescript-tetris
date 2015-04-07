@@ -333,6 +333,7 @@ class Game {
         new SpriteImage("block7"),
     ];
     static BG = new SpriteImage("gamebg");
+    static MASTER_BG = new SpriteImage("bg");
     static GAME_OVER = new SpriteImage("gameover");
 
     static PIECE_SIZE = 4;
@@ -452,6 +453,7 @@ class Game {
     private spriteRenderer: SpriteRenderer;
     private textRenderer: TextRenderer;
 
+    private spriteBg: Sprite;
     private spriteField: Sprite;
     private spritesCell: Sprite[];
     private spriteNextPiece: Sprite;
@@ -487,6 +489,11 @@ class Game {
     constructor(gl: WebGLRenderingContext) {
         this.spriteRenderer = new SpriteRenderer(gl);
         this.textRenderer = new TextRenderer(gl, "font1", new Vec2(Game.UNIT, Game.UNIT), new Vec2(1 / 16, 1/ 16));
+
+        this.spriteBg = new Sprite();
+        this.spriteBg.size = new Vec2(1, 1);
+        this.spriteBg.image = Game.MASTER_BG;
+        this.spriteBg.textureSize = new Vec2(1024 / 704, 512/706);
 
         this.spriteField = new Sprite();
         this.spriteField.position = new Vec3(Game.UNIT, Game.UNIT, -1);
@@ -693,8 +700,7 @@ class Game {
     }
 
     render(gl: WebGLRenderingContext): void {
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
+        this.spriteRenderer.render(gl, this.spriteBg);
         this.spriteRenderer.render(gl, this.spriteField);
 
         for (var x = 0; x < this.field.width; ++x) {
