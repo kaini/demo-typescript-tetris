@@ -105,7 +105,7 @@ window.onload = () => {
     initPipeline(gl);
     var game = new Game(gl);
     window.onkeydown = game.handleKeypress.bind(game);
-    setInterval(game.tick.bind(game, gl), 1.0 / 60.0);
+    setInterval(game.render.bind(game, gl), 1.0 / 60.0);
 };
 
 class Vec2 {
@@ -282,6 +282,9 @@ class Game {
         new SpriteImage("block2"),
         new SpriteImage("block3"),
         new SpriteImage("block4"),
+        new SpriteImage("block5"),
+        new SpriteImage("block6"),
+        new SpriteImage("block7"),
     ];
     static BG = new SpriteImage("gamebg");
     static GAME_OVER = new SpriteImage("gameover");
@@ -406,14 +409,16 @@ class Game {
     private spriteField: Sprite;
     private spritesCell: Sprite[];
     private spriteGameOver: Sprite;
+    private spriteNextPiece: Sprite;
 
     private currentPieceIdx: number;
     private currentPos: Vec2;
-    private currentColor: number;
     private currentRotIdx: number;
+    private nextPieceIdx: number;
 
     private gameOver: boolean;
     private moveTimeout: number;
+    private level: number;
 
     private get currentPiece(): number[][]{
         if (this.currentPieceIdx == null) {
@@ -446,12 +451,19 @@ class Game {
         this.spriteGameOver.image = Game.GAME_OVER;
         this.spriteGameOver.textureSize = new Vec2(Game.UNIT * 18 * (1024 / 576), Game.UNIT * 4 * (1024 / 128));
 
+        this.spriteNextPiece = new Sprite();
+        this.spriteNextPiece.position = new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 7);
+        this.spriteNextPiece.size = new Vec2(Game.UNIT * 4, Game.UNIT * 6);
+        this.spriteNextPiece.image = this.spriteField.image;
+        this.spriteNextPiece.textureSize = this.spriteField.textureSize;
 
         this.field = new Array2D(Game.WIDTH, Game.HEIGHT, 0);
         this.currentPieceIdx = null;
         this.currentPos = new Vec2();
         this.gameOver = false;
+        this.level = 1;
 
+        this.nextPieceIdx = Math.floor(Math.random() * Game.PIECES.length);
         this.move();
     }
 
@@ -480,6 +492,44 @@ class Game {
         }
     }
 
+    private updateScore(): void {
+        var fullRows: number[] = [];
+        for (var y = 0; y < Game.HEIGHT; ++y) {
+            var currentRowFull = true;
+            for (var x = 0; x < Game.WIDTH; ++x) {
+                if (this.field.get(x, y) == 0) {
+                    currentRowFull = false;
+                    break;
+                }
+            }
+            if (currentRowFull) {
+                fullRows.push(y);
+            }
+        }
+
+        if (fullRows.length == 0) {
+            return;
+        }
+
+        // Note that deleting rows is sorted ascending!
+        var i = 0;
+        fullRows.forEach((deletingRow) => {
+            for (var y = deletingRow - i; y < Game.HEIGHT; ++y) {
+                for (var x = 0; x < Game.WIDTH; ++x) {
+                    if (y + 1 >= Game.HEIGHT) {
+                        this.field.set(x, y, 0);
+                    } else {
+                        this.field.set(x, y, this.field.get(x, y + 1));
+                    }
+                }
+            }
+
+            ++i;
+        });
+
+        // TODO SCORE! LEVEL!
+    }
+
     private move(dropping: boolean = false): void {
         if (this.moveTimeout) {
             clearTimeout(this.moveTimeout);
@@ -491,15 +541,12 @@ class Game {
                 dropping = false;  // Stop dropping if we are dropping
 
                 // Spawn a piece.
-                var pieceIdx = Math.floor(Math.random() * Game.PIECES.length);
-                var colorIdx = Math.floor(Math.random() * Game.CELLS.length) + 1;
-                var rotIdx = Math.floor(Math.random() * Game.PIECES[pieceIdx].length);
-
-                this.currentPieceIdx = pieceIdx;
+                this.currentPieceIdx = this.nextPieceIdx;
                 this.currentPos.x = Math.floor((Game.WIDTH - Game.PIECE_SIZE) / 2);
                 this.currentPos.y = Game.HEIGHT - Game.PIECE_SIZE;
-                this.currentColor = colorIdx;
-                this.currentRotIdx = rotIdx;
+                this.currentRotIdx = 0;
+
+                this.nextPieceIdx = Math.floor(Math.random() * Game.PIECES.length);
                 
                 // Game Over?
                 if (this.collisionTest(this.currentPiece, this.currentPos)) {
@@ -514,11 +561,13 @@ class Game {
                     for (var x = 0; x < Game.PIECE_SIZE; ++x) {
                         for (var y = 0; y < Game.PIECE_SIZE; ++y) {
                             if (this.currentPiece[y][x] == 1) {
-                                this.field.set(this.currentPos.x + x, this.currentPos.y + y, this.currentColor);
+                                this.field.set(this.currentPos.x + x, this.currentPos.y + y, this.currentPieceIdx + 1);
                             }
                         }
                     }
                     this.currentPieceIdx = null;
+
+                    this.updateScore();
                 } else {
                     // Otherwise move it down.
                     this.currentPos = nextPos;
@@ -528,11 +577,11 @@ class Game {
         } while (dropping);
 
         if (!this.gameOver) {
-            this.moveTimeout = setTimeout(this.move.bind(this), 1000);
+            this.moveTimeout = setTimeout(this.move.bind(this), 1000 * Math.pow(3 / 4, this.level - 1));
         }
     }
 
-    tick(gl: WebGLRenderingContext): void {
+    render(gl: WebGLRenderingContext): void {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         this.spriteRenderer.render(gl, this.spriteField);
@@ -553,11 +602,24 @@ class Game {
             for (var x = 0; x < Game.PIECE_SIZE; ++x) {
                 for (var y = 0; y < Game.PIECE_SIZE; ++y) {
                     if (this.currentPiece[y][x] == 1) {
-                        var idx = this.currentColor - 1;
+                        var idx = this.currentPieceIdx;
                         this.spritesCell[idx].position.x = (1 + x + this.currentPos.x) * Game.UNIT;
                         this.spritesCell[idx].position.y = (1 + y + this.currentPos.y) * Game.UNIT;
                         this.spriteRenderer.render(gl, this.spritesCell[idx]);
                     }
+                }
+            }
+        }
+
+        this.spriteRenderer.render(gl, this.spriteNextPiece);
+        var nextPiece = Game.PIECES[this.nextPieceIdx][0];
+        for (var x = 0; x < Game.PIECE_SIZE; ++x) {
+            for (var y = 0; y < Game.PIECE_SIZE; ++y) {
+                if (nextPiece[y][x] == 1) {
+                    var idx = this.nextPieceIdx;
+                    this.spritesCell[idx].position.x = (14 + x) * Game.UNIT;
+                    this.spritesCell[idx].position.y = (16 + y) * Game.UNIT;
+                    this.spriteRenderer.render(gl, this.spritesCell[idx]);
                 }
             }
         }
