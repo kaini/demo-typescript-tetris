@@ -206,6 +206,7 @@ class Sprite {
     visible: boolean;  // is visible?
     image: SpriteImage;  // image to display
     textureSize: Vec2;  // absolute size of one texture tile (null allowed)
+    textureOffset: Vec2;  // offset (in texture coordinates)
 
     constructor() {
         this.position = new Vec3();
@@ -213,12 +214,12 @@ class Sprite {
         this.visible = true;
         this.image = Sprite.DUMMY_IMAGE;
         this.textureSize = null;
+        this.textureOffset = new Vec2(0, 0);
     }
 }
 
 class SpriteRenderer {
     private buffer: WebGLBuffer;
-    private modelMatrixUniform: WebGLUniformLocation;
 
     constructor(gl: WebGLRenderingContext) {
         var data = new Float32Array([
@@ -258,7 +259,7 @@ class SpriteRenderer {
             // column major!
             sprite.size.x / texX, 0.0, 0.0,
             0.0, sprite.size.y / texY, 0.0,
-            0.0, 0.0, 1.0,
+            sprite.textureOffset.x, sprite.textureOffset.y, 1.0,
         ]);
         gl.uniformMatrix3fv(UNIFORM_TEX_MATRIX, false, texMatrix);
 
@@ -270,6 +271,51 @@ class SpriteRenderer {
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         gl.disableVertexAttribArray(0);
     }
+}
+
+class GameText {
+    constructor(
+        public text: string,
+        public position: Vec3,
+        public visible: boolean = true) {
+    }
+}
+
+class TextRenderer {
+
+    private spriteRenderer: SpriteRenderer;
+    private sprite: Sprite;
+    private charSizeTexture: Vec2;
+
+    constructor(gl: WebGLRenderingContext, font: string, charSizeScreen: Vec2, charSizeTexture: Vec2) {
+        this.spriteRenderer = new SpriteRenderer(gl);
+        this.charSizeTexture = charSizeTexture;
+
+        this.sprite = new Sprite();
+        this.sprite.size = charSizeScreen;
+        this.sprite.image = new SpriteImage(font);
+        this.sprite.textureSize = new Vec2(
+            this.sprite.size.x / charSizeTexture.x,
+            this.sprite.size.y / charSizeTexture.y);
+    }
+
+    render(gl: WebGLRenderingContext, text: GameText): void {
+        if (!text.visible)
+            return;
+
+        this.sprite.position = new Vec3(text.position.x, text.position.y, text.position.z);
+        for (var i = 0; i < text.text.length; ++i) {
+            var c = text.text.charCodeAt(i);
+
+            this.sprite.textureOffset = new Vec2(
+                this.charSizeTexture.x * (c % Math.round(1 / this.charSizeTexture.x)),
+                this.charSizeTexture.y * Math.floor(c / Math.round(1 / this.charSizeTexture.x)));
+            this.spriteRenderer.render(gl, this.sprite);
+
+            this.sprite.position.x += this.sprite.size.x;
+        }
+    }
+
 }
 
 class Game {
@@ -404,20 +450,30 @@ class Game {
     ];
 
     private spriteRenderer: SpriteRenderer;
-    private field: Array2D<number>;
+    private textRenderer: TextRenderer;
 
     private spriteField: Sprite;
     private spritesCell: Sprite[];
-    private spriteGameOver: Sprite;
     private spriteNextPiece: Sprite;
+
+    private textScore: GameText;
+    private textScoreNumbers: GameText;
+    private textLevel: GameText;
+    private textLevelNumbers: GameText;
+    private textScoreNext: GameText;
+    private textScoreNextNumbers: GameText;
+    private textGame: GameText;
+    private textOver: GameText;
 
     private currentPieceIdx: number;
     private currentPos: Vec2;
     private currentRotIdx: number;
     private nextPieceIdx: number;
 
+    private field: Array2D<number>;
     private gameOver: boolean;
     private moveTimeout: number;
+    private score: number;
     private level: number;
 
     private get currentPiece(): number[][]{
@@ -430,6 +486,7 @@ class Game {
 
     constructor(gl: WebGLRenderingContext) {
         this.spriteRenderer = new SpriteRenderer(gl);
+        this.textRenderer = new TextRenderer(gl, "font1", new Vec2(Game.UNIT, Game.UNIT), new Vec2(1 / 16, 1/ 16));
 
         this.spriteField = new Sprite();
         this.spriteField.position = new Vec3(Game.UNIT, Game.UNIT, -1);
@@ -445,26 +502,31 @@ class Game {
             this.spritesCell.push(sprite);
         });
 
-        this.spriteGameOver = new Sprite();
-        this.spriteGameOver.position = new Vec3(Game.UNIT * 2, Game.UNIT * 9, 1);
-        this.spriteGameOver.size = new Vec2(Game.UNIT * 18, Game.UNIT * 4);
-        this.spriteGameOver.image = Game.GAME_OVER;
-        this.spriteGameOver.textureSize = new Vec2(Game.UNIT * 18 * (1024 / 576), Game.UNIT * 4 * (1024 / 128));
-
         this.spriteNextPiece = new Sprite();
         this.spriteNextPiece.position = new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 7);
         this.spriteNextPiece.size = new Vec2(Game.UNIT * 4, Game.UNIT * 6);
         this.spriteNextPiece.image = this.spriteField.image;
         this.spriteNextPiece.textureSize = this.spriteField.textureSize;
 
+        this.textScore = new GameText("SCORE", new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 9));
+        this.textScoreNumbers = new GameText("------", new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 10));
+        this.textLevel = new GameText("LEVEL", new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 12));
+        this.textLevelNumbers = new GameText("---", new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 13));
+        this.textScoreNext = new GameText("NEXT", new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 15));
+        this.textScoreNextNumbers = new GameText("------", new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 16));
+        this.textGame = new GameText("\23 GAME", new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 18));
+        this.textOver = new GameText("\23 OVER", new Vec3(Game.UNIT * 14, 1 - Game.UNIT * 19));
+
         this.field = new Array2D(Game.WIDTH, Game.HEIGHT, 0);
         this.currentPieceIdx = null;
         this.currentPos = new Vec2();
         this.gameOver = false;
         this.level = 1;
+        this.score = 0;
 
         this.nextPieceIdx = Math.floor(Math.random() * Game.PIECES.length);
         this.move();
+        this.updateTexts();
     }
 
     private collisionTest(piece: number[][], pos: Vec2): boolean {
@@ -528,6 +590,55 @@ class Game {
         });
 
         // TODO SCORE! LEVEL!
+        var base: number;
+        switch (fullRows.length) {
+            case 1:
+                base = 40;
+                break;
+            case 2:
+                base = 100;
+                break;
+            case 3:
+                base = 300;
+                break;
+            case 4:
+            default:
+                base = 1200;
+                break;
+        }
+        this.score += base * this.level;
+        
+        while (this.score >= Game.levelMinScore(this.level + 1))
+            ++this.level;
+        
+        this.updateTexts();
+    }
+
+    private static levelMinScore(level: number): number {
+        // Have a jump every this.level * 1200 points,
+        // that means, the points for each level l are
+        //     SUM (1200 * n) for n in 1..(l-1)
+        // and this happens to be
+        //     600 * l * (l - 1)
+        // Thanks Wolfram!
+        return 600 * level * (level - 1);
+    }
+
+    private updateTexts(): void {
+        this.textScoreNumbers.text = "" + this.score;
+        while (this.textScoreNumbers.text.length < 6) {
+            this.textScoreNumbers.text = "0" + this.textScoreNumbers.text;
+        }
+
+        this.textLevelNumbers.text = "" + this.level;
+        while (this.textLevelNumbers.text.length < 3) {
+            this.textLevelNumbers.text = "0" + this.textLevelNumbers.text;
+        }
+
+        this.textScoreNextNumbers.text = "" + Game.levelMinScore(this.level + 1);
+        while (this.textScoreNextNumbers.text.length < 6) {
+            this.textScoreNextNumbers.text = "0" + this.textScoreNextNumbers.text;
+        }
     }
 
     private move(dropping: boolean = false): void {
@@ -624,8 +735,16 @@ class Game {
             }
         }
 
+        this.textRenderer.render(gl, this.textScore);
+        this.textRenderer.render(gl, this.textScoreNumbers);
+        this.textRenderer.render(gl, this.textLevel);
+        this.textRenderer.render(gl, this.textLevelNumbers);
+        this.textRenderer.render(gl, this.textScoreNext);
+        this.textRenderer.render(gl, this.textScoreNextNumbers);
+
         if (this.gameOver) {
-            this.spriteRenderer.render(gl, this.spriteGameOver);
+            this.textRenderer.render(gl, this.textGame);
+            this.textRenderer.render(gl, this.textOver);
         }
     }
 
