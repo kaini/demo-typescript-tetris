@@ -1,0 +1,13 @@
+
+# Visual Studio
+*.suo
+*.csproj.user
+
+# Stuff
+/kenneys_assets/
+
+# Build output
+/typescript_tetris/bin/
+/typescript_tetris/obj/
+/typescript_tetris/app.js.map
+/typescript_tetris/app.js
