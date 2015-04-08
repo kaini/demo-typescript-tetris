@@ -334,7 +334,6 @@ class Game {
     ];
     static BG = new SpriteImage("gamebg");
     static MASTER_BG = new SpriteImage("bg");
-    static GAME_OVER = new SpriteImage("gameover");
 
     static PIECE_SIZE = 4;
     static PIECES = [
