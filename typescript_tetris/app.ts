@@ -754,18 +754,18 @@ class Game {
     }
 
     handleKeypress(ev: KeyboardEvent): void {
-        switch (ev.key) {
-            case "ArrowDown":
+        switch (ev.keyCode) {
+            case 0x28:
                 if (!this.gameOver && this.currentPiece) {
                     this.move(true);
                 }
                 break;
-            case "ArrowUp":
+            case 0x26:
                 if (!this.gameOver && this.currentPiece) {
                     this.rotatePiece();
                 }
                 break;
-            case "ArrowLeft":
+            case 0x25:
                 if (!this.gameOver && this.currentPiece) {
                     var nextPos = new Vec2(this.currentPos.x - 1, this.currentPos.y);
                     if (!this.collisionTest(this.currentPiece, nextPos)) {
@@ -773,7 +773,7 @@ class Game {
                     }
                 }
                 break;
-            case "ArrowRight":
+            case 0x27:
                 if (!this.gameOver && this.currentPiece) {
                     var nextPos = new Vec2(this.currentPos.x + 1, this.currentPos.y);
                     if (!this.collisionTest(this.currentPiece, nextPos)) {
